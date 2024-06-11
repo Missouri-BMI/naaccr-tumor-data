@@ -53,18 +53,18 @@ class TumorOnt {
             new ColumnMeta(name: 'C_HLEVEL', dataType: Types.INTEGER, nullable: false),
             new ColumnMeta(name: 'C_FULLNAME', size: 700, nullable: false),
             new ColumnMeta(name: 'C_NAME', size: 2000, nullable: false),
-            new ColumnMeta(name: 'C_SYNONYM_CD', dataType: Types.CHAR, size: 1, nullable: false),
-            new ColumnMeta(name: 'C_VISUALATTRIBUTES', dataType: Types.CHAR, size: 3, nullable: false),
+            new ColumnMeta(name: 'C_SYNONYM_CD', dataType: Types.VARCHAR, size: 1, nullable: false),
+            new ColumnMeta(name: 'C_VISUALATTRIBUTES', dataType: Types.VARCHAR, size: 3, nullable: false),
             new ColumnMeta(name: 'C_TOTALNUM', dataType: Types.INTEGER),
             new ColumnMeta(name: 'C_BASECODE', size: 50),
-            new ColumnMeta(name: 'C_METADATAXML', dataType: Types.CLOB),
+            new ColumnMeta(name: 'C_METADATAXML', dataType: Types.VARCHAR, size: 2000),
             new ColumnMeta(name: 'C_FACTTABLECOLUMN', size: 50, nullable: false),
             new ColumnMeta(name: 'C_TABLENAME', size: 50, nullable: false),
             new ColumnMeta(name: 'C_COLUMNNAME', size: 50, nullable: false),
             new ColumnMeta(name: 'C_COLUMNDATATYPE', size: 50, nullable: false),
             new ColumnMeta(name: 'C_OPERATOR', size: 10, nullable: false),
             new ColumnMeta(name: 'C_DIMCODE', size: 700, nullable: false),
-            new ColumnMeta(name: 'C_COMMENT', dataType: Types.CLOB),
+            new ColumnMeta(name: 'C_COMMENT', dataType: Types.VARCHAR, size: 2000),
             new ColumnMeta(name: 'C_TOOLTIP', size: 900),
             new ColumnMeta(name: 'M_APPLIED_PATH', size: 700, nullable: false),
             new ColumnMeta(name: 'UPDATE_DATE', dataType: Types.TIMESTAMP, nullable: false),
@@ -76,8 +76,8 @@ class TumorOnt {
             new ColumnMeta(name: 'C_PATH', size: 700),
             new ColumnMeta(name: 'C_SYMBOL', size: 50),
     ]
-    static final URL sectionCSV = TumorOnt.getResource('heron_load/section.csv')
-    static final URL itemCSV = TumorOnt.getResource('heron_load/tumor_item_type.csv')
+    static final URL sectionCSV = TumorOnt.getResource('/gpc/heron_load/section.csv')
+    static final URL itemCSV = TumorOnt.getResource('/gpc/heron_load/tumor_item_type.csv')
 
     static Map<Integer, Map> itemsByNum() {
         final Map<Integer, Map> byNum = Tabular.allCSVRecords(itemCSV)
@@ -167,7 +167,7 @@ class TumorOnt {
     }
 
     static class SEERRecode {
-        static URL seer_recode_terms = TumorOnt.getResource('seer_recode_terms.csv')
+        static URL seer_recode_terms = TumorOnt.getResource('/gpc/heron_load/seer_recode_terms.csv')
         static Map folder = normal_term + [
                 C_HLEVEL          : top.C_HLEVEL as int + 1,
                 C_FULLNAME        : top.C_FULLNAME as String + 'SEER Site\\',
@@ -181,7 +181,7 @@ class TumorOnt {
         static Map makeTerm(Map item) {
             final path = "${folder.C_FULLNAME}${item.path}\\".toString()
             normal_term + [
-                    C_HLEVEL          : folder.C_HLEVEL as int + 1,
+                    C_HLEVEL          : (item.hlevel as int) + (folder.C_HLEVEL as int) + 1,
                     C_FULLNAME        : path,
                     C_DIMCODE         : path,
                     C_NAME            : item.name,
@@ -193,7 +193,7 @@ class TumorOnt {
     }
 
     static class CSTerms {
-        static URL cs_terms = TumorOnt.getResource('heron_load/cs-terms.csv')
+        static URL cs_terms = TumorOnt.getResource('/gpc/heron_load/cs-terms.csv')
 
         static Map makeTerm(Map item) {
             normal_term + [
@@ -208,7 +208,7 @@ class TumorOnt {
         }
     }
 
-    static List<Map<String, Object>> pcornet_fields = Tabular.allCSVRecords(TumorOnt.getResource('fields.csv'))
+    static List<Map<String, Object>> pcornet_fields = Tabular.allCSVRecords(TumorOnt.getResource('/gpc/fields.csv'))
 
     /**
      * PCORnet tumor table fields
@@ -315,11 +315,12 @@ class TumorOnt {
         insertTerms(sql, table_name, CSTerms.cs_terms, { Map s -> CSTerms.makeTerm(s) })
     }
 
+    @Slf4j
     static class NAACCR_R {
         // Names assumed by naaccr_txform.sql
 
-        static final URL field_info_csv = TumorOnt.getResource('naaccr_r_raw/field_info.csv')
-        static final URL field_code_scheme_csv = TumorOnt.getResource('naaccr_r_raw/field_code_scheme.csv')
+        static final URL field_info_csv = TumorOnt.getResource('/gpc/naaccr_r_raw/field_info.csv')
+        static final URL field_code_scheme_csv = TumorOnt.getResource('/gpc/naaccr_r_raw/field_code_scheme.csv')
         static final List<ColumnMeta> field_info_meta = [
                 new ColumnMeta(name: "item", dataType: Types.INTEGER),
                 new ColumnMeta(name: "name"),
@@ -337,10 +338,10 @@ class TumorOnt {
                 new ColumnMeta(name: "name"),
                 new ColumnMeta(name: "scheme"),
         ]
-        static final URL _code_labels = TumorOnt.getResource('naaccr_r_raw/code-labels/')
+        static final URL _code_labels = TumorOnt.getResource('/gpc/naaccr_r_raw/code-labels/')
 
         static void eachFieldScheme(Closure thunk) {
-            field_code_scheme_csv.withInputStream { fs ->
+            field_code_scheme_csv.withInputStream { fs -> 
                 Tabular.eachCSVRecord(fs, field_code_scheme_meta) { Map it ->
                     final url = new URL(_code_labels, "${it.scheme}.csv")
                     thunk(it + [url: url])
@@ -497,7 +498,7 @@ class TumorOnt {
         // TODO: static final measure = read_csv(gpc.TumorOnt.getResource('loinc_naaccr/loinc_naaccr.csv'))
 
         // LOINC_NUMBER,COMPONENT,CODE_SYSTEM,CODE_VALUE,AnswerListId,AnswerListName,ANSWER_CODE,SEQUENCE_NO,ANSWER_STRING
-        static URL loinc_naaccr_answer = TumorOnt.getResource('loinc_naaccr/loinc_naaccr_answer.csv')
+        static URL loinc_naaccr_answer = TumorOnt.getResource('/gpc/loinc_naaccr/loinc_naaccr_answer.csv')
 
         static void eachAnswerTerm(Closure<Void> thunk) {
             Map<Integer, Map> byNum = itemsByNum()

@@ -1,0 +1,36 @@
+Usage:
+  naaccr-tumor-data tumor-table [--db=PF] [--task-id=ID]
+  naaccr-tumor-data tumor-files [--db=PF] NAACCR_FILE...
+  naaccr-tumor-data load-layouts [--db=PF] [--layout-table=T]
+  naaccr-tumor-data facts  [--db=F] --upload-id=NNN [--obs-src=S] [--mrn-item=N] [--encounter-start=N]
+  naaccr-tumor-data summary  [--db=F] [--task-id=ID]
+  naaccr-tumor-data ontology [--db=F] [--table-name=N] [--version=V] [--task-hash=H] [--update-date=D] [--who-cache=D]
+  naaccr-tumor-data import [--db=F] TABLE DATA META
+  naaccr-tumor-data run SCRIPT [--db=F]
+  naaccr-tumor-data query SQL [--db=F]
+
+Options:
+  tumor-table        load TUMOR table from flat file
+  --task-id=ID       version / completion marker [default: task123]
+  tumor-files        load NAACCR records into a (CLOB) column of a DB table
+  load-layouts       load NAACCR layout data
+  --layout-table=T   where to load layout data [default: LAYOUT]
+  facts              build OBSERVATION_FACT_NNN table
+  --upload-id=NNN    to fill in observation_fact.upload_id [default: 1]
+  --obs-src=S        sourcesystem_cd to give to facts [default: tumor_registry@kumed.com]
+  --mrn-item=N       NAACCR item to use for patient mapping [default: patientIdNumber]
+  --encounter-start=N  encounter_num start [default: 2000000]
+  summary            build NAACCR_EXTRACT_STATS table
+  --db=PROPS         database properties file [default: db.properties]
+  ontology           build NAACCR_ONTOLOGY table
+  --table-name=T     ontology table name [default: NAACCR_ONTOLOGY]
+  --version=NNN      ontology version [default: 180]
+  --task-hash=H      ontology completion marker
+  --update-date=D    ontology update_date in YYYY-MM-DD format
+  --who-cache=DIR    where to find WHO oncology metadata
+  import             import CSV
+  TABLE              target table name
+  DATA               CSV file
+  META               W3C tabular data metadata (JSON)
+  run                run SQL script
+  query              run SQL query and write results to stdout in JSON

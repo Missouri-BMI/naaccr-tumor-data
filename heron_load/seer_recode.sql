@@ -8,7 +8,7 @@ Largely derived from:
 
 by way of seer_recode.py
 
-  http://informatics.kumc.edu/work/browser/tumor_reg/seer_recode.py
+  https://informatics.kumc.edu/work/browser/tumor_reg/seer_recode.py
  */
 
 create or replace temporary view seer_recode_aux as

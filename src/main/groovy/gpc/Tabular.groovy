@@ -4,7 +4,6 @@ import groovy.json.JsonSlurper
 import groovy.sql.Sql
 import groovy.transform.CompileStatic
 import groovy.transform.Immutable
-
 import java.sql.Connection
 import java.sql.Types
 import java.time.LocalDateTime

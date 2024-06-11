@@ -21,3 +21,8 @@ __pycache__
 
 # luigi config files
 client-*.cfg
+.gradle/
+.idea/
+
+build/*
+db.properties
