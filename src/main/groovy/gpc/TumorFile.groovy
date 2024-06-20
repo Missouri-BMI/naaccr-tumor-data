@@ -26,7 +26,7 @@ import java.util.zip.CRC32
 @Slf4j
 class TumorFile {
     // see also: buildUsageDoc groovy task
-    static final String usageText = TumorFile.getResourceAsStream('usage.txt').text
+    static final String usageText = TumorFile.getResourceAsStream('gpc/usage.txt').text
     static final Docopt docopt = new Docopt(usageText).withExit(false)
 
     static void main(String[] args) {
@@ -561,7 +561,7 @@ class TumorFile {
 
     @Immutable
     static class SEERRecode {
-        static URL site_recode = TumorFile.getResource('seer_site_recode.txt')
+        static URL site_recode = TumorFile.getResource('gpc/seer_site_recode.txt')
 
         static String stripTrailing(String s) {
             s.replaceFirst('\\s++$', "")
