@@ -3,6 +3,7 @@ Usage:
   naaccr-tumor-data tumor-files [--db=PF] NAACCR_FILE...
   naaccr-tumor-data load-layouts [--db=PF] [--layout-table=T]
   naaccr-tumor-data facts  [--db=F] --upload-id=NNN [--obs-src=S] [--mrn-item=N] [--encounter-start=N]
+  naaccr-tumor-data facts-v2 --upload-id=NNN
   naaccr-tumor-data summary  [--db=F] [--task-id=ID]
   naaccr-tumor-data ontology [--db=F] [--table-name=N] [--version=V] [--task-hash=H] [--update-date=D] [--who-cache=D]
   naaccr-tumor-data import [--db=F] TABLE DATA META
@@ -20,6 +21,7 @@ Options:
   --obs-src=S        sourcesystem_cd to give to facts [default: tumor_registry@kumed.com]
   --mrn-item=N       NAACCR item to use for patient mapping [default: patientIdNumber]
   --encounter-start=N  encounter_num start [default: 2000000]
+  facts-v2           build TUMOR_FACT table
   summary            build NAACCR_EXTRACT_STATS table
   --db=PROPS         database properties file [default: db.properties]
   ontology           build NAACCR_ONTOLOGY table

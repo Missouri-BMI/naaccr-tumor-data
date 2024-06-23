@@ -26,7 +26,7 @@ import java.util.zip.CRC32
 @Slf4j
 class TumorFile {
     // see also: buildUsageDoc groovy task
-    static final String usageText = TumorFile.getResourceAsStream('gpc/usage.txt').text
+    static final String usageText = TumorFile.getResourceAsStream('usage.txt').text
     static final Docopt docopt = new Docopt(usageText).withExit(false)
 
     static void main(String[] args) {
@@ -80,7 +80,19 @@ class TumorFile {
                     cli.arg('--mrn-item'),
                     cli.intArg('--encounter-start'),
             )
-        } else if (cli.flag('load-layouts')) {
+        } else if (cli.flag('facts-v2')) {
+            final upload = new I2B2Upload(
+                    cli.property("i2b2.star-schema", "i2b2data"),
+                    cli.intArg('--upload-id'),
+                    cli.arg('--obs-src'),
+                    cli.property("i2b2.template-fact-table", null),
+            )
+
+            work = new NAACCR_Facts_V2(cdw,
+                    cli.property('pcornet.tumor-table'),
+                    upload
+            )
+        }else if (cli.flag('load-layouts')) {
             work = new LoadLayouts(cdw, cli.arg('--layout-table'))
         } else if (cli.flag('run') || cli.flag('query')) {
             Loader.run_cli(cli)
@@ -276,6 +288,32 @@ class TumorFile {
         return false
     }
 
+    static class NAACCR_Facts_V2 implements Task {
+        final TableBuilder tb
+        private final DBConfig cdw
+        private final String sourceDB
+        private final I2B2Upload upload
+
+        NAACCR_Facts_V2(DBConfig cdw,
+                     String sourceDB,
+                     I2B2Upload upload) {
+            final task_id = "upload_id_${upload.upload_id}"  // TODO: transition from task_id to upload_id
+            tb = new TableBuilder(task_id: task_id, table_name: upload.factTable)
+            this.cdw = cdw
+            this.sourceDB = sourceDB
+            this.upload = upload
+        }
+
+        boolean complete() { tb.complete(cdw) }
+
+        void run() {
+            cdw.withSql { Sql sql ->
+                makeTumorFacts(sql, sourceDB, upload)
+
+            }
+        }
+    }
+
     static class NAACCR_Facts implements Task {
         final TableBuilder tb
         final int encounter_num_start
@@ -330,7 +368,7 @@ class TumorFile {
         }
 
         String getFactTable() {
-            qname("OBSERVATION_FACT" + (upload_id == null ? "" : "_${upload_id}"))
+            qname("TUMOR_FACT_V1" + (upload_id == null ? "" : "_${upload_id}"))
         }
 
         private String qname(String object_name) {
@@ -381,6 +419,14 @@ class TumorFile {
             """.trim()
         }
         static final not_null = '@'
+    }
+
+
+    static void makeTumorFacts(
+            Sql sql,
+            String sourceDB,
+            I2B2Upload upload) {
+        log.info("fact DML: {},\nsourceDB: {}" , upload.insertStatement, sourceDB)
     }
 
     // TODO: recode facts? TumorOnt.getResource('heron_load/seer_recode_terms.csv'))
