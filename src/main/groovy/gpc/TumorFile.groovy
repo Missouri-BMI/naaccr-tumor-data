@@ -11,7 +11,6 @@ import groovy.transform.CompileStatic
 import groovy.transform.Immutable
 import groovy.util.logging.Slf4j
 import org.docopt.Docopt
-
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.sql.DriverManager
@@ -421,12 +420,47 @@ class TumorFile {
         static final not_null = '@'
     }
 
+    public static String camelToSnake(String str)
+    {
+        // Regular Expression
+        String regex = "([a-z])([A-Z]+)";
+
+        // Replacement string
+        String replacement = '$1_$2'
+
+        // Replace the given regex
+        // with replacement string
+        // and convert it to lower case.
+        str = str
+                .replaceAll(
+                        regex, replacement)
+                .toLowerCase();
+
+        // return string
+        return str;
+    }
 
     static void makeTumorFacts(
             Sql sql,
             String sourceDB,
-            I2B2Upload upload) {
-        log.info("fact DML: {},\nsourceDB: {}" , upload.insertStatement, sourceDB)
+            I2B2Upload upload,
+            boolean include_phi = false) {
+
+        final itemInfo = Tabular.allCSVRecords(TumorOnt.itemCSV).collect {
+            final num = it.naaccrNum as int
+            final itemId = it.naaccrId as String
+            String naaccrColumn = TumorFile.camelToSnake(itemId) + '_n'+ num.toString()
+
+            [
+                    naaccrColumn : naaccrColumn,
+                    valtype_cd: it.valtype_cd
+            ]
+
+        }.findAll { it.naaccrColumn != null && (include_phi || !(it.valtype_cd as String).contains('i')) }
+
+        itemInfo.each { item ->
+            log.info(item.naaccrColumn as String)
+        }
     }
 
     // TODO: recode facts? TumorOnt.getResource('heron_load/seer_recode_terms.csv'))
