@@ -446,13 +446,25 @@ class TumorFile {
             I2B2Upload upload,
             boolean include_phi = false) {
 
+        String columnSql = "select column_name from DEIDENTIFIED_PCORNET_CDM.information_schema.columns\n" +
+                "where table_name = 'DEID_TUMOR' and table_schema = 'CDM'"
+        Map<String, String> query_result = new HashMap<>()
+
+        sql.rows(columnSql).forEach {
+            String val = it.COLUMN_NAME
+            if (val == "PATID") {
+                return
+            }
+            String[] split = val.split('_N')
+            String key = split[split.size() - 1]
+            query_result.put(key, val)
+        }
+
         final itemInfo = Tabular.allCSVRecords(TumorOnt.itemCSV).collect {
             final num = it.naaccrNum as int
-            final itemId = it.naaccrId as String
-            String naaccrColumn = TumorFile.camelToSnake(itemId) + '_n'+ num.toString()
-
+            String key = num.toString()
             [
-                    naaccrColumn : naaccrColumn,
+                    naaccrColumn : query_result.get(key),
                     valtype_cd: it.valtype_cd
             ]
 
