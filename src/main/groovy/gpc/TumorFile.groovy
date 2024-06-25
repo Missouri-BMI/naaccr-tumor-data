@@ -91,6 +91,8 @@ class TumorFile {
                     cli.property('pcornet.tumor-table'),
                     upload
             )
+            work.run()
+            return
         }else if (cli.flag('load-layouts')) {
             work = new LoadLayouts(cdw, cli.arg('--layout-table'))
         } else if (cli.flag('run') || cli.flag('query')) {
@@ -385,7 +387,7 @@ class TumorFile {
                 new ColumnMeta(name: "INSTANCE_NUM", dataType: Types.INTEGER, nullable: false),
                 new ColumnMeta(name: "VALTYPE_CD", size: 50),
                 new ColumnMeta(name: "TVAL_CHAR", size: 4000),
-                new ColumnMeta(name: "NVAL_NUM", dataType: Types.FLOAT),
+                new ColumnMeta(name: "NVAL_NUM", dataType: Types.DOUBLE),
                 new ColumnMeta(name: "END_DATE", dataType: Types.TIMESTAMP),
                 new ColumnMeta(name: "UPDATE_DATE", dataType: Types.TIMESTAMP),
                 new ColumnMeta(name: "DOWNLOAD_DATE", dataType: Types.TIMESTAMP),
@@ -420,26 +422,6 @@ class TumorFile {
         static final not_null = '@'
     }
 
-    public static String camelToSnake(String str)
-    {
-        // Regular Expression
-        String regex = "([a-z])([A-Z]+)";
-
-        // Replacement string
-        String replacement = '$1_$2'
-
-        // Replace the given regex
-        // with replacement string
-        // and convert it to lower case.
-        str = str
-                .replaceAll(
-                        regex, replacement)
-                .toLowerCase();
-
-        // return string
-        return str;
-    }
-
     static void makeTumorFacts(
             Sql sql,
             String sourceDB,
@@ -470,9 +452,22 @@ class TumorFile {
 
         }.findAll { it.naaccrColumn != null && (include_phi || !(it.valtype_cd as String).contains('i')) }
 
-        itemInfo.each { item ->
-            log.info(item.naaccrColumn as String)
-        }
+        final patIdField = "PATID"
+        final dxDateField = "DATE_OF_DIAGNOSIS_N390"
+        final dateFields = [
+                'DATE_OF_BIRTH_N240', 'DATE_OF_DIAGNOSIS_N390', 'DATE_OF1ST_CONTACT_N580',
+                'DATE_CASE_COMPLETED_N2090', 'DATE_CASE_LAST_CHANGED_N2100', 'DATE_CASE_REPORT_EXPORT_N2110'
+        ]
+        final recodeRules = SEERRecode.fromLines(SEERRecode.site_recode.text)
+        final siteField = "PRIMARY_SITE_N400"
+        final histologyField = "HISTOLOGIC_TYPE_ICD_O3_N522"
+
+        dropIfExists(sql, upload.factTable)
+        sql.execute(upload.getFactTableDDL(ColumnMeta.typeNames(sql.connection)))
+        //fetch rows in batch and insert
+
+        // only fill in upload_id after all rows are done
+        sql.execute("update ${upload.factTable} set upload_id = ?.upload_id".toString(), [upload_id: upload.upload_id])
     }
 
     // TODO: recode facts? TumorOnt.getResource('heron_load/seer_recode_terms.csv'))
@@ -653,7 +648,7 @@ class TumorFile {
 
     @Immutable
     static class SEERRecode {
-        static URL site_recode = TumorFile.getResource('gpc/seer_site_recode.txt')
+        static URL site_recode = TumorFile.getResource('seer_site_recode.txt')
 
         static String stripTrailing(String s) {
             s.replaceFirst('\\s++$', "")
