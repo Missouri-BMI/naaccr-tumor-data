@@ -6,6 +6,7 @@ import com.imsweb.layout.record.fixed.FixedColumnsLayout
 import gpc.DBConfig.Task
 import gpc.Tabular.ColumnMeta
 import groovy.sql.BatchingPreparedStatementWrapper
+import groovy.sql.GroovyResultSet
 import groovy.sql.Sql
 import groovy.transform.CompileStatic
 import groovy.transform.Immutable
@@ -16,6 +17,7 @@ import java.nio.file.Paths
 import java.sql.DriverManager
 import java.sql.SQLException
 import java.sql.Types
+import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -428,8 +430,20 @@ class TumorFile {
             I2B2Upload upload,
             boolean include_phi = false) {
 
+        final patIdField = "PATID"
+        final dxDateField = "DATE_OF_DIAGNOSIS_N390"
+        final dateFields = [
+                'DATE_OF_BIRTH_N240', 'DATE_OF_DIAGNOSIS_N390', 'DATE_OF1ST_CONTACT_N580',
+                'DATE_CASE_COMPLETED_N2090', 'DATE_CASE_LAST_CHANGED_N2100', 'DATE_CASE_REPORT_EXPORT_N2110'
+        ]
+        final siteField = "PRIMARY_SITE_N400"
+        final histologyField = "HISTOLOGIC_TYPE_ICD_O3_N522"
+        final recodeRules = SEERRecode.fromLines(SEERRecode.site_recode.text)
+
+        String columnNames = patIdField
         String columnSql = "select column_name from DEIDENTIFIED_PCORNET_CDM.information_schema.columns\n" +
                 "where table_name = 'DEID_TUMOR' and table_schema = 'CDM'"
+
         Map<String, String> query_result = new HashMap<>()
 
         sql.rows(columnSql).forEach {
@@ -440,7 +454,10 @@ class TumorFile {
             String[] split = val.split('_N')
             String key = split[split.size() - 1]
             query_result.put(key, val)
+            columnNames += ", " + val
         }
+
+        String sqlString= "SELECT " + columnNames + " from DEIDENTIFIED_PCORNET_CDM.CDM.DEID_TUMOR limit 10"
 
         final itemInfo = Tabular.allCSVRecords(TumorOnt.itemCSV).collect {
             final num = it.naaccrNum as int
@@ -452,22 +469,56 @@ class TumorFile {
 
         }.findAll { it.naaccrColumn != null && (include_phi || !(it.valtype_cd as String).contains('i')) }
 
-        final patIdField = "PATID"
-        final dxDateField = "DATE_OF_DIAGNOSIS_N390"
-        final dateFields = [
-                'DATE_OF_BIRTH_N240', 'DATE_OF_DIAGNOSIS_N390', 'DATE_OF1ST_CONTACT_N580',
-                'DATE_CASE_COMPLETED_N2090', 'DATE_CASE_LAST_CHANGED_N2100', 'DATE_CASE_REPORT_EXPORT_N2110'
-        ]
-        final recodeRules = SEERRecode.fromLines(SEERRecode.site_recode.text)
-        final siteField = "PRIMARY_SITE_N400"
-        final histologyField = "HISTOLOGIC_TYPE_ICD_O3_N522"
-
         dropIfExists(sql, upload.factTable)
         sql.execute(upload.getFactTableDDL(ColumnMeta.typeNames(sql.connection)))
         //fetch rows in batch and insert
 
         // only fill in upload_id after all rows are done
         sql.execute("update ${upload.factTable} set upload_id = ?.upload_id".toString(), [upload_id: upload.upload_id])
+        log.info("Insert statement: {}", upload.insertStatement)
+        sql.withBatch(10, upload.insertStatement) { ps ->
+            int fact_qty = 0
+            int encounter_num = 0
+            sql.eachRow(sqlString) {
+                encounter_num += 1
+                final patient_num = it["PATID"] as Integer
+
+                Map<String,Date> dates = dateFields.collectEntries { String column ->
+                    [column, it[column]]
+                }
+
+                itemInfo.each { item ->
+                    Map record
+                    final field = item.naaccrColumn as String
+                    try {
+                        record = itemFact(encounter_num, patient_num, it, dates,
+                                field, item.valtype_cd as String,
+                                upload.sourcesystem_cd)
+                        if (record == null) {
+                            return
+                        }
+                        ps.addBatch(record)
+                        fact_qty += 1
+                        if (field == siteField) {
+                            final site = it[siteField] as String
+                            final histology = it[histologyField] as String
+                            if (site > '' && histology > '') {
+                                final recode = SEERRecode.getRecode(recodeRules, site, histology)
+                                ps.addBatch(record + [concept_cd: 'SEER_SITE:' + recode])
+                            }
+                        }
+
+                    } catch (badItem) {
+                        log.warn('tumor {} patient {}: cannot make fact for item {}: {} and record: {}',
+                                encounter_num, patient_num, field, badItem.toString(), record)
+                    }
+                }
+
+                if (encounter_num % 1000 == 0) {
+                    log.info('tumor {}: {} facts', encounter_num, fact_qty)
+                }
+            }
+        }
     }
 
     // TODO: recode facts? TumorOnt.getResource('heron_load/seer_recode_terms.csv'))
@@ -561,6 +612,75 @@ class TumorFile {
 
     static String fieldValue(FixedColumnsField field, String line) {
         line.substring(field.start - 1, field.start + field.length - 1).trim()
+    }
+
+    static Map itemFact(int encounter_num, int patient_num, GroovyResultSet line, Map<String, Date> dates,
+                        String fixed, String valtype_cd,
+                        String sourcesystem_cd) {
+        final value = line[fixed] as String
+        if (value == null) {
+            return null
+        }
+        if (value == '') {
+            return null
+        }
+        final nominal = valtype_cd == '@' ? value : ''
+        Date start_date = dates.DATE_OF_DIAGNOSIS_N390
+        if (valtype_cd == 'D') {
+            if (value == '99999999') {
+                return null
+            }
+
+            final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-mm-dd", Locale.ENGLISH);
+            start_date = formatter.parse(value);
+
+            if (start_date == null) {
+                log.warn('tumor {} patient {}: cannot parse {}: [{}]',
+                        encounter_num, patient_num, fixed, value)
+                return null
+            }
+        }
+//        else if (fixed.section == 'Follow-up/Recurrence/Death'
+//                && dates.dateOfLastContact !== null) {
+//            start_date = dates.dateOfLastContact
+//        }
+        String[] split = fixed.split("_N")
+        String naaccrItemNum = split[split.size() - 1]
+        String concept_cd = "NAACCR|${naaccrItemNum}:${nominal}"
+        assert concept_cd.length() <= 50
+        Double num = null
+        if (valtype_cd == 'N' && !value.startsWith(('XX'))) {
+            try {
+                num = Double.parseDouble(value)
+            } catch (badNum) {
+                log.warn('tumor {} patient {}: cannot parse number {}: [{}] {}',
+                        encounter_num, patient_num, fixed, value, badNum.toString())
+                return null
+            }
+        }
+        final update_date = [
+                dates.DATE_CASE_LAST_CHANGED_N2100, dates.DATE_CASE_COMPLETED_N2090,
+                dates.DATE_OF_DIAGNOSIS_N390,
+        ].find { it != null }
+
+
+        [
+                encounter_num  : encounter_num,
+                patient_num    : patient_num,
+                concept_cd     : concept_cd,
+                provider_id    : I2B2Upload.not_null,
+                start_date     : start_date,
+                modifier_cd    : I2B2Upload.not_null,
+                instance_num   : 1,
+                valtype_cd     : valtype_cd,
+                tval_char      : valtype_cd == 'T' ? value : null,
+                nval_num       : num,
+                end_date       : start_date,
+                update_date    : update_date,
+                download_date  : dates.DATE_CASE_REPORT_EXPORT_N2110,
+                sourcesystem_cd: sourcesystem_cd,
+                upload_id      : null,
+        ]
     }
 
     static Map itemFact(int encounter_num, int patient_num, String line, Map<String, LocalDate> dates,
