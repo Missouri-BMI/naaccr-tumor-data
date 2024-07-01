@@ -625,15 +625,26 @@ class TumorFile {
             return null
         }
         final nominal = valtype_cd == '@' ? value : ''
-        Date start_date = dates.DATE_OF_DIAGNOSIS_N390
+        String start_date = dates.DATE_OF_DIAGNOSIS_N390
         if (valtype_cd == 'D') {
             if (value == '99999999') {
                 return null
             }
+            SimpleDateFormat[] formats = new SimpleDateFormat[] {
+                    new SimpleDateFormat("yyyy-mm-dd"),
+                    new SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy")
+            }
 
-            final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-mm-dd", Locale.ENGLISH);
-            start_date = formatter.parse(value);
-
+            for (SimpleDateFormat format : formats) {
+                try {
+                    Date date = format.parse(value);
+                    SimpleDateFormat outputFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                    start_date = outputFormat.format(date)
+                    break
+                } catch (Exception e) {
+                    // Continue to next format
+                }
+            }
             if (start_date == null) {
                 log.warn('tumor {} patient {}: cannot parse {}: [{}]',
                         encounter_num, patient_num, fixed, value)
