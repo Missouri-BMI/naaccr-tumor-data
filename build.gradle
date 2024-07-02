@@ -35,7 +35,7 @@ dependencies {
     compile group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.30'
     // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
     compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.30'
-
+    compile group: 'javax.xml.bind', name: 'jaxb-api', version: '2.3.1'
     // i2b2 JDBC drivers
     // https://github.com/i2b2/i2b2-core-server/tree/master/edu.harvard.i2b2.server-common/lib/jdbc
     // mssql-jdbc-7.4.1.jre8.jar, ojdbc8.jar, postgresql-42.2.8.jar

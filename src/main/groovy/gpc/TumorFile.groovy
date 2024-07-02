@@ -17,6 +17,7 @@ import java.nio.file.Paths
 import java.sql.DriverManager
 import java.sql.SQLException
 import java.sql.Types
+import java.sql.Timestamp
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -371,7 +372,8 @@ class TumorFile {
         }
 
         String getFactTable() {
-            qname("TUMOR_FACT_V1" + (upload_id == null ? "" : "_${upload_id}"))
+//            qname("TUMOR_FACT" + (upload_id == null ? "" : "_${upload_id}"))
+            qname("TUMOR_FACT")
         }
 
         private String qname(String object_name) {
@@ -457,7 +459,7 @@ class TumorFile {
             columnNames += ", " + val
         }
 
-        String sqlString= "SELECT " + columnNames + " from DEIDENTIFIED_PCORNET_CDM.CDM.DEID_TUMOR limit 10"
+        String sqlString= "SELECT " + columnNames + " from DEIDENTIFIED_PCORNET_CDM.CDM.DEID_TUMOR"
 
         final itemInfo = Tabular.allCSVRecords(TumorOnt.itemCSV).collect {
             final num = it.naaccrNum as int
@@ -468,15 +470,13 @@ class TumorFile {
             ]
 
         }.findAll { it.naaccrColumn != null && (include_phi || !(it.valtype_cd as String).contains('i')) }
-
-        dropIfExists(sql, upload.factTable)
+        sql.execute("drop table if exists " + upload.factTable)
         sql.execute(upload.getFactTableDDL(ColumnMeta.typeNames(sql.connection)))
         //fetch rows in batch and insert
 
         // only fill in upload_id after all rows are done
         sql.execute("update ${upload.factTable} set upload_id = ?.upload_id".toString(), [upload_id: upload.upload_id])
-        log.info("Insert statement: {}", upload.insertStatement)
-        sql.withBatch(10, upload.insertStatement) { ps ->
+        sql.withBatch(4096, upload.insertStatement) { ps ->
             int fact_qty = 0
             int encounter_num = 0
             sql.eachRow(sqlString) {
@@ -614,6 +614,22 @@ class TumorFile {
         line.substring(field.start - 1, field.start + field.length - 1).trim()
     }
 
+    static Date getDate(String value) {
+        SimpleDateFormat[] formats = new SimpleDateFormat[] {
+                new SimpleDateFormat("yyyy-mm-dd"),
+                new SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy")
+        }
+
+        for (SimpleDateFormat format : formats) {
+            try {
+                return format.parse(value)
+            } catch (Exception e) {
+                // Continue to next format
+            }
+        }
+        return null
+    }
+
     static Map itemFact(int encounter_num, int patient_num, GroovyResultSet line, Map<String, Date> dates,
                         String fixed, String valtype_cd,
                         String sourcesystem_cd) {
@@ -625,31 +641,21 @@ class TumorFile {
             return null
         }
         final nominal = valtype_cd == '@' ? value : ''
-        String start_date = dates.DATE_OF_DIAGNOSIS_N390
+        Date start_date = dates.DATE_OF_DIAGNOSIS_N390
+
         if (valtype_cd == 'D') {
             if (value == '99999999') {
                 return null
             }
-            SimpleDateFormat[] formats = new SimpleDateFormat[] {
-                    new SimpleDateFormat("yyyy-mm-dd"),
-                    new SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy")
-            }
-
-            for (SimpleDateFormat format : formats) {
-                try {
-                    Date date = format.parse(value);
-                    SimpleDateFormat outputFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                    start_date = outputFormat.format(date)
-                    break
-                } catch (Exception e) {
-                    // Continue to next format
-                }
-            }
+            start_date = TumorFile.getDate(value)
             if (start_date == null) {
                 log.warn('tumor {} patient {}: cannot parse {}: [{}]',
                         encounter_num, patient_num, fixed, value)
                 return null
             }
+        }
+        if (start_date == null) {
+            return null
         }
 //        else if (fixed.section == 'Follow-up/Recurrence/Death'
 //                && dates.dateOfLastContact !== null) {
@@ -669,24 +675,25 @@ class TumorFile {
                 return null
             }
         }
+
         final update_date = [
                 dates.DATE_CASE_LAST_CHANGED_N2100, dates.DATE_CASE_COMPLETED_N2090,
                 dates.DATE_OF_DIAGNOSIS_N390,
         ].find { it != null }
-
+        Timestamp ts = new Timestamp(start_date.getTime())
 
         [
                 encounter_num  : encounter_num,
                 patient_num    : patient_num,
                 concept_cd     : concept_cd,
                 provider_id    : I2B2Upload.not_null,
-                start_date     : start_date,
+                start_date     : ts,
                 modifier_cd    : I2B2Upload.not_null,
                 instance_num   : 1,
                 valtype_cd     : valtype_cd,
                 tval_char      : valtype_cd == 'T' ? value : null,
                 nval_num       : num,
-                end_date       : start_date,
+                end_date       : dates.DATE_CASE_COMPLETED_N2090,
                 update_date    : update_date,
                 download_date  : dates.DATE_CASE_REPORT_EXPORT_N2110,
                 sourcesystem_cd: sourcesystem_cd,
